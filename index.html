@@ -323,6 +323,20 @@
     }
     .sheet-btn-row .btn-status { flex: 1; }
 
+    /* ── Sync status bar ── */
+    .sync-bar {
+      margin: 10px 16px 0;
+      padding: 7px 14px;
+      background: #edf2f7;
+      border-radius: 10px;
+      font-size: 0.8em;
+      color: #718096;
+      text-align: center;
+      transition: background 0.3s, color 0.3s;
+    }
+    .sync-bar.ok    { background: #f0fff4; color: #276749; }
+    .sync-bar.error { background: #fff5f5; color: #c53030; font-weight: 600; }
+
     /* ── No-config banner ── */
     .setup-banner {
       margin: 16px;
@@ -348,6 +362,9 @@
   <h1>היום של דן 🌟</h1>
   <div class="date-sub" id="currentDate">טוען...</div>
 </header>
+
+<!-- Sync status -->
+<div class="sync-bar" id="syncBar">🔄 מתחבר לשרת...</div>
 
 <!-- Streak -->
 <div class="streak-card" id="streakCard">
@@ -616,6 +633,14 @@ async function saveToday() {
   showToast('✓ נשמר בהצלחה!');
 }
 
+// ── Sync status bar ──────────────────────────────────────────
+function setSyncStatus(state, msg) {
+  const bar = document.getElementById('syncBar');
+  if (!bar) return;
+  bar.className = 'sync-bar' + (state ? ' ' + state : '');
+  bar.textContent = msg;
+}
+
 // ── Data loading ─────────────────────────────────────────────
 async function loadData() {
   // Show cached data immediately while fetching
@@ -632,20 +657,32 @@ async function loadData() {
   try {
     const resp = await fetch(`${state.scriptUrl}?action=getData`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data   = await resp.json();
+    const data = await resp.json();
+
+    // Surface any server-side error (e.g. script not bound to spreadsheet)
+    if (data.error) {
+      setSyncStatus('error', '⚠️ שגיאת שרת: ' + data.error);
+      console.error('Server error:', data.error);
+      return;  // keep whatever is in local state
+    }
+
     // Merge: local entries newer than the server version are kept
-    // (prevents optimistic saves from being overwritten before GAS processes them)
     const merged = mergeWithLocal(data, state.data);
     state.data   = merged;
     localStorage.setItem(LS_CACHE, JSON.stringify(merged));
     render(merged);
+
+    const count = (merged.days || []).length;
+    const now   = new Date();
+    const hh    = String(now.getHours()).padStart(2,'0');
+    const mm    = String(now.getMinutes()).padStart(2,'0');
+    setSyncStatus('ok', `✓ מסונכרן · ${count} ימים · ${hh}:${mm}`);
   } catch (e) {
     console.error('Load error:', e);
+    setSyncStatus('error', '⚠️ לא מחובר לשרת – ' + e.message);
     if (!state.data) {
       document.getElementById('daysGrid').innerHTML =
         '<div style="text-align:center;color:#f56565;padding:20px">לא ניתן לטעון נתונים.<br>בדוק חיבור לאינטרנט.</div>';
-    } else {
-      showToast('מציג נתונים שמורים (אין חיבור)');
     }
   }
 }
@@ -671,6 +708,10 @@ function esc(str) {
 // synced to the server yet.  For each date, whichever version has a
 // newer ISO timestamp wins; local-only entries (pending sync) are kept.
 function mergeWithLocal(serverData, localData) {
+  // Guard: if server sent an error object or missing days, fall back to local
+  if (!serverData || !Array.isArray(serverData.days)) {
+    return localData || { days: [], photoUrl: '' };
+  }
   if (!localData || !Array.isArray(localData.days) || !localData.days.length) return serverData;
 
   const result    = { ...serverData, days: [...serverData.days] };
@@ -701,12 +742,21 @@ async function apiSaveDay(date, status, note) {
     const resp = await fetch(url);
     if (!resp.ok) return;
     const serverData = await resp.json();
-    if (serverData.error || !Array.isArray(serverData.days)) return;
+    if (serverData.error) {
+      setSyncStatus('error', '⚠️ שמירה נכשלה: ' + serverData.error);
+      return;
+    }
+    if (!Array.isArray(serverData.days)) return;
     // Server confirmed — merge (keeps any newer local edits on top)
     const merged = mergeWithLocal(serverData, state.data);
     state.data = merged;
     localStorage.setItem(LS_CACHE, JSON.stringify(merged));
     render(merged);
+    const count = (merged.days || []).length;
+    const now   = new Date();
+    const hh    = String(now.getHours()).padStart(2,'0');
+    const mm    = String(now.getMinutes()).padStart(2,'0');
+    setSyncStatus('ok', `✓ נשמר בשרת · ${count} ימים · ${hh}:${mm}`);
   } catch (_) { /* keep optimistic */ }
 }
 
@@ -776,6 +826,13 @@ function saveEditSheet() {
 
 // ── Init ─────────────────────────────────────────────────────
 loadData();
+
+// Auto-refresh: reload from server every 30 s and when the tab becomes visible
+// so Browser B always picks up saves made on Browser A
+setInterval(loadData, 30_000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) loadData();
+});
 </script>
 </body>
 </html>
