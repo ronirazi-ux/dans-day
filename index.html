@@ -642,35 +642,46 @@ function setSyncStatus(state, msg) {
 }
 
 // ── Pending-sync upload ──────────────────────────────────────
-// After each getData, push any local entries that the server doesn't have.
-// This reconciles history that was saved to localStorage only (e.g. before
-// the date-format fix was deployed) so all devices converge to the same data.
+// Uploads local entries missing from the server. Each saveDay response
+// already contains the full updated sheet, so we use the LAST successful
+// response as the final server view — no extra re-fetch, no loop.
 async function syncPendingToServer(serverData) {
-  if (!state.data || !Array.isArray(state.data.days)) return false;
+  if (!state.data || !Array.isArray(state.data.days)) return null;
   const serverDates = new Set((serverData.days || []).map(d => d.date));
   const pending = state.data.days.filter(d => d.status && !serverDates.has(d.date));
-  if (!pending.length) return false;
+  if (!pending.length) return null;
 
-  setSyncStatus(null, `🔄 מעלה ${pending.length} ימים שחסרו בשרת...`);
+  setSyncStatus(null, `🔄 מעלה ${pending.length} ימים...`);
+  let latest = serverData;
   for (const entry of pending) {
     const url = `${state.scriptUrl}?action=saveDay` +
       `&date=${encodeURIComponent(entry.date)}` +
       `&status=${encodeURIComponent(entry.status)}` +
       `&note=${encodeURIComponent(entry.note || '')}`;
-    try { await fetch(url); } catch (_) {}
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const d = await resp.json();
+        if (d && !d.error && Array.isArray(d.days)) latest = d;
+      }
+    } catch (_) {}
   }
-  return true;
+  return latest;  // post-upload server view, no re-fetch needed
 }
 
 // ── Data loading ─────────────────────────────────────────────
+let _loadInFlight = false;  // guard against concurrent calls from poll + focus
+
 async function loadData() {
-  // Show cached data immediately while fetching
+  if (_loadInFlight) return;
+  _loadInFlight = true;
+  try { await _doLoadData(); } finally { _loadInFlight = false; }
+}
+
+async function _doLoadData() {
   const cached = localStorage.getItem(LS_CACHE);
   if (cached) {
-    try {
-      state.data = JSON.parse(cached);
-      render(state.data);
-    } catch (_) {}
+    try { state.data = JSON.parse(cached); render(state.data); } catch (_) {}
   } else {
     renderHeader();
   }
@@ -680,25 +691,15 @@ async function loadData() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     let data = await resp.json();
 
-    // Surface any server-side error (e.g. script not bound to spreadsheet)
     if (data.error) {
       setSyncStatus('error', '⚠️ שגיאת שרת: ' + data.error);
       console.error('Server error:', data.error);
       return;
     }
 
-    // Push any local-only entries (from before server was working) up to server,
-    // then re-fetch so this device sees the merged result immediately.
-    const hadPending = await syncPendingToServer(data);
-    if (hadPending) {
-      try {
-        const r2 = await fetch(`${state.scriptUrl}?action=getData`);
-        if (r2.ok) {
-          const d2 = await r2.json();
-          if (!d2.error && Array.isArray(d2.days)) data = d2;
-        }
-      } catch (_) {}
-    }
+    // Upload any local-only entries; returns updated server view (or null if nothing to upload)
+    const synced = await syncPendingToServer(data);
+    if (synced) data = synced;
 
     const merged = mergeWithLocal(data, state.data);
     state.data   = merged;
