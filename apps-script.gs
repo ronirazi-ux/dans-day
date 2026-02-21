@@ -40,10 +40,16 @@ function doGet(e) {
 
       const timestamp = new Date().toISOString();
       const rows      = daysSheet.getDataRange().getValues();
+      const tz        = Session.getScriptTimeZone();
 
       // Upsert: update existing row if date matches
+      // Sheets auto-parses ISO date strings as Date objects, so normalise before comparing
       for (let i = 1; i < rows.length; i++) {
-        if (String(rows[i][0]) === date) {
+        const cellDate = rows[i][0];
+        const cellStr  = (cellDate instanceof Date)
+          ? Utilities.formatDate(cellDate, tz, 'yyyy-MM-dd')
+          : String(cellDate).trim();
+        if (cellStr === date) {
           daysSheet.getRange(i + 1, 2, 1, 3).setValues([[status, note, timestamp]]);
           return jsonResponse(buildResponseData(ss));
         }
@@ -76,14 +82,24 @@ function buildResponseData(ss) {
 
   const days    = [];
   const rawRows = daysSheet.getDataRange().getValues();
+  const tz      = Session.getScriptTimeZone();
   for (let i = 0; i < rawRows.length; i++) {
-    const row = rawRows[i];
-    if (!row[0] || row[0] === 'Date') continue;  // skip empty / header
+    const row     = rawRows[i];
+    const rawDate = row[0];
+    if (!rawDate || rawDate === 'Date') continue;  // skip empty / header
+    // Sheets auto-parses ISO date strings into Date objects — convert back to YYYY-MM-DD
+    const dateStr = (rawDate instanceof Date)
+      ? Utilities.formatDate(rawDate, tz, 'yyyy-MM-dd')
+      : String(rawDate).trim();
+    if (!dateStr || dateStr === 'Date') continue;
+    // Timestamps may also be parsed as Date objects
+    const rawTs = row[3];
+    const tsStr = (rawTs instanceof Date) ? rawTs.toISOString() : String(rawTs || '');
     days.push({
-      date:      String(row[0]),
+      date:      dateStr,
       status:    String(row[1] || ''),
       note:      String(row[2] || ''),
-      timestamp: String(row[3] || ''),
+      timestamp: tsStr,
     });
   }
 
