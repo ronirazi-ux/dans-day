@@ -7,87 +7,88 @@
  * ───────────────
  * Tab "days"   → A: Date (YYYY-MM-DD), B: Status (good/violent), C: Note, D: Timestamp
  * Tab "config" → A: key,  B: value   (row: photo_url | <Google Drive URL>)
+ *
+ * All actions go through doGet to avoid CORS/redirect issues with POST from browsers.
+ *
+ * Actions (passed as ?action=... query param):
+ *   getData              → returns { days: [...], photoUrl: '' }
+ *   saveDay&date=...&status=...&note=...  → upserts a day, returns updated getData result
+ *   setPhoto&photoUrl=...                → saves photo URL to config, returns { ok: true }
  */
 
 const DAYS_SHEET   = 'days';
 const CONFIG_SHEET = 'config';
 
-// ── GET ──────────────────────────────────────────────────────
-// Called by the app on load: returns { days: [...], photoUrl: '' }
+// ── Main entry point ──────────────────────────────────────────
 function doGet(e) {
   try {
-    const ss          = SpreadsheetApp.getActiveSpreadsheet();
-    const daysSheet   = getOrCreateSheet(ss, DAYS_SHEET);
-    const configSheet = getOrCreateSheet(ss, CONFIG_SHEET);
+    const params = e.parameter || {};
+    const action = params.action || 'getData';
+    const ss     = SpreadsheetApp.getActiveSpreadsheet();
 
-    // Read all day rows (skip header if present)
-    const days = [];
-    const rawRows = daysSheet.getDataRange().getValues();
-    for (let i = 0; i < rawRows.length; i++) {
-      const row = rawRows[i];
-      if (!row[0] || row[0] === 'Date') continue;  // skip empty / header
-      days.push({
-        date:      String(row[0]),
-        status:    String(row[1] || ''),
-        note:      String(row[2] || ''),
-        timestamp: String(row[3] || ''),
-      });
+    if (action === 'saveDay') {
+      const date   = String(params.date   || '').trim();
+      const status = String(params.status || '').trim();
+      const note   = String(params.note   || '').trim();
+
+      if (!date || !['good', 'violent'].includes(status)) {
+        return jsonResponse({ error: 'missing or invalid date/status' });
+      }
+
+      const daysSheet = getOrCreateSheet(ss, DAYS_SHEET);
+      ensureDaysHeader(daysSheet);
+
+      const timestamp = new Date().toISOString();
+      const rows      = daysSheet.getDataRange().getValues();
+
+      // Upsert: update existing row if date matches
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === date) {
+          daysSheet.getRange(i + 1, 2, 1, 3).setValues([[status, note, timestamp]]);
+          return jsonResponse(buildResponseData(ss));
+        }
+      }
+
+      // Insert new row
+      daysSheet.appendRow([date, status, note, timestamp]);
+      return jsonResponse(buildResponseData(ss));
     }
 
-    // Read photo URL from config tab
-    const photoUrl = getConfig(configSheet, 'photo_url');
+    if (action === 'setPhoto') {
+      const photoUrl    = String(params.photoUrl || '').trim();
+      const configSheet = getOrCreateSheet(ss, CONFIG_SHEET);
+      setConfig(configSheet, 'photo_url', photoUrl);
+      return jsonResponse({ ok: true });
+    }
 
-    const result = { days, photoUrl };
-    return jsonResponse(result);
+    // Default: getData
+    return jsonResponse(buildResponseData(ss));
 
   } catch (err) {
     return jsonResponse({ error: String(err) });
   }
 }
 
-// ── POST ─────────────────────────────────────────────────────
-// Two actions:
-//   { action: 'setPhoto', photoUrl: '...' }         → saves photo URL to config
-//   { date: 'YYYY-MM-DD', status: '...', note: '' } → upserts a day entry
-function doPost(e) {
-  try {
-    const body = JSON.parse(e.postData.contents);
-    const ss   = SpreadsheetApp.getActiveSpreadsheet();
+// ── Build the standard response payload ──────────────────────
+function buildResponseData(ss) {
+  const daysSheet   = getOrCreateSheet(ss, DAYS_SHEET);
+  const configSheet = getOrCreateSheet(ss, CONFIG_SHEET);
 
-    if (body.action === 'setPhoto') {
-      const configSheet = getOrCreateSheet(ss, CONFIG_SHEET);
-      setConfig(configSheet, 'photo_url', body.photoUrl || '');
-      return jsonResponse({ ok: true });
-    }
-
-    // Save / update day entry
-    const daysSheet = getOrCreateSheet(ss, DAYS_SHEET);
-    const date      = String(body.date   || '').trim();
-    const status    = String(body.status || '').trim();
-    const note      = String(body.note   || '').trim();
-
-    if (!date || !status) return jsonResponse({ error: 'missing fields' });
-
-    ensureDaysHeader(daysSheet);
-
-    const timestamp = new Date().toISOString();
-    const rows      = daysSheet.getDataRange().getValues();
-
-    // Try to find existing row with matching date
-    for (let i = 1; i < rows.length; i++) {
-      if (String(rows[i][0]) === date) {
-        daysSheet.getRange(i + 1, 2, 1, 3).setValues([[status, note, timestamp]]);
-        return jsonResponse({ ok: true, action: 'updated' });
-      }
-    }
-
-    // Append new row
-    daysSheet.appendRow([date, status, note, timestamp]);
-    return jsonResponse({ ok: true, action: 'inserted' });
-
-  } catch (err) {
-    return jsonResponse({ error: String(err) });
+  const days    = [];
+  const rawRows = daysSheet.getDataRange().getValues();
+  for (let i = 0; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row[0] || row[0] === 'Date') continue;  // skip empty / header
+    days.push({
+      date:      String(row[0]),
+      status:    String(row[1] || ''),
+      note:      String(row[2] || ''),
+      timestamp: String(row[3] || ''),
+    });
   }
+
+  const photoUrl = getConfig(configSheet, 'photo_url');
+  return { days, photoUrl };
 }
 
 // ── Helpers ──────────────────────────────────────────────────

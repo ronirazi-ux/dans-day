@@ -700,26 +700,15 @@ async function saveToday() {
   showToast('שומר...');
 
   try {
-    await fetch(state.scriptUrl, {
-      method:  'POST',
-      mode:    'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body:    JSON.stringify({ date: state.todayKey, status: state.selectedStatus, note }),
-    });
+    const data = await apiSaveDay(state.todayKey, state.selectedStatus, note);
+    state.data = data;
+    localStorage.setItem(LS_CACHE, JSON.stringify(data));
+    render(data);
+    showToast('✓ נשמר בהצלחה!');
   } catch (e) {
-    console.warn('Save network error:', e);
+    console.warn('Save error:', e);
+    showToast('שגיאה בשמירה — בדוק חיבור');
   }
-
-  // Optimistic update (no-cors means we can't read the response)
-  if (!state.data) state.data = { days: [], photoUrl: '' };
-  const idx = state.data.days.findIndex(d => d.date === state.todayKey);
-  const entry = { date: state.todayKey, status: state.selectedStatus, note };
-  if (idx >= 0) state.data.days[idx] = entry;
-  else          state.data.days.push(entry);
-
-  localStorage.setItem(LS_CACHE, JSON.stringify(state.data));
-  render(state.data);
-  showToast('✓ נשמר בהצלחה!');
 }
 
 // ── Config ───────────────────────────────────────────────────
@@ -743,12 +732,7 @@ async function saveConfig() {
   // If admin entered a photo URL, push it to the sheet
   if (photoUrl && url) {
     try {
-      await fetch(url, {
-        method:  'POST',
-        mode:    'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body:    JSON.stringify({ action: 'setPhoto', photoUrl }),
-      });
+      await fetch(`${url}?action=setPhoto&photoUrl=${encodeURIComponent(photoUrl)}`);
       if (state.data) { state.data.photoUrl = photoUrl; localStorage.setItem(LS_CACHE, JSON.stringify(state.data)); }
     } catch (e) {
       console.warn('Photo save error:', e);
@@ -817,6 +801,17 @@ function esc(str) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── API helper ───────────────────────────────────────────────
+async function apiSaveDay(date, status, note) {
+  const url = `${state.scriptUrl}?action=saveDay` +
+    `&date=${encodeURIComponent(date)}` +
+    `&status=${encodeURIComponent(status)}` +
+    `&note=${encodeURIComponent(note || '')}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
 // ── Edit previous days ───────────────────────────────────────
 const editState = { dateKey: null, selectedStatus: null };
 
@@ -868,27 +863,16 @@ async function saveEditSheet() {
   showToast('שומר...');
 
   try {
-    await fetch(state.scriptUrl, {
-      method:  'POST',
-      mode:    'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body:    JSON.stringify({ date: editState.dateKey, status: editState.selectedStatus, note }),
-    });
+    const data = await apiSaveDay(editState.dateKey, editState.selectedStatus, note);
+    state.data = data;
+    localStorage.setItem(LS_CACHE, JSON.stringify(data));
+    hideEditSheet();
+    render(data);
+    showToast('✓ נשמר בהצלחה!');
   } catch (e) {
-    console.warn('Edit save network error:', e);
+    console.warn('Edit save error:', e);
+    showToast('שגיאה בשמירה — בדוק חיבור');
   }
-
-  // Optimistic update
-  if (!state.data) state.data = { days: [], photoUrl: '' };
-  const idx   = state.data.days.findIndex(d => d.date === editState.dateKey);
-  const entry = { date: editState.dateKey, status: editState.selectedStatus, note };
-  if (idx >= 0) state.data.days[idx] = entry;
-  else          state.data.days.push(entry);
-
-  localStorage.setItem(LS_CACHE, JSON.stringify(state.data));
-  hideEditSheet();
-  render(state.data);
-  showToast('✓ נשמר בהצלחה!');
 }
 
 // ── Init ─────────────────────────────────────────────────────
