@@ -643,7 +643,7 @@ async function loadData() {
     console.error('Load error:', e);
     if (!state.data) {
       document.getElementById('daysGrid').innerHTML =
-        '<div style="text-align:center;color:#f56565;padding:20px">לא ניתן לטעון נתונים.<br>בדוק את ה-URL בהגדרות.</div>';
+        '<div style="text-align:center;color:#f56565;padding:20px">לא ניתן לטעון נתונים.<br>בדוק חיבור לאינטרנט.</div>';
     } else {
       showToast('מציג נתונים שמורים (אין חיבור)');
     }
@@ -689,14 +689,25 @@ function mergeWithLocal(serverData, localData) {
 }
 
 // ── API helper ───────────────────────────────────────────────
-// GET + no-cors: params survive GAS's cross-origin redirect (POST body doesn't).
-// Response is opaque so we can't read it — caller does an optimistic local update.
-function apiSaveDay(date, status, note) {
+// Background save: optimistic update already applied by caller.
+// If the server responds with confirmed data, we sync state from it.
+// Any failure is silent — optimistic data stays in localStorage.
+async function apiSaveDay(date, status, note) {
   const url = `${state.scriptUrl}?action=saveDay` +
     `&date=${encodeURIComponent(date)}` +
     `&status=${encodeURIComponent(status)}` +
     `&note=${encodeURIComponent(note || '')}`;
-  fetch(url, { mode: 'no-cors' }).catch(() => {});  // fire-and-forget
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const serverData = await resp.json();
+    if (serverData.error || !Array.isArray(serverData.days)) return;
+    // Server confirmed — merge (keeps any newer local edits on top)
+    const merged = mergeWithLocal(serverData, state.data);
+    state.data = merged;
+    localStorage.setItem(LS_CACHE, JSON.stringify(merged));
+    render(merged);
+  } catch (_) { /* keep optimistic */ }
 }
 
 // ── Edit previous days ───────────────────────────────────────
