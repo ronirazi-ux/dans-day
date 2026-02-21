@@ -338,6 +338,55 @@
     }
     .toast.show { opacity: 1; }
 
+    /* ── History day cards — clickable ── */
+    .day-card {
+      cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .day-card:active { transform: scale(0.97); }
+    .day-card:hover  { box-shadow: 0 4px 14px rgba(0,0,0,0.11); }
+    .day-edit-hint {
+      font-size: 0.72em;
+      color: #a0aec0;
+      margin-top: 2px;
+    }
+
+    /* ── Edit bottom sheet ── */
+    .sheet-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.42);
+      z-index: 800;
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .sheet-backdrop.hidden { display: none; }
+    .edit-sheet {
+      background: white;
+      border-radius: 22px 22px 0 0;
+      padding: 20px 18px 36px;
+      width: 100%; max-width: 480px;
+      box-shadow: 0 -6px 28px rgba(0,0,0,0.18);
+      animation: sheetUp 0.22s ease-out;
+    }
+    @keyframes sheetUp {
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
+    }
+    .sheet-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .sheet-title { font-size: 1em; font-weight: 700; color: #2d3748; }
+    .btn-sheet-close {
+      background: #edf2f7; border: none; border-radius: 50%;
+      width: 30px; height: 30px; font-size: 1em;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: #718096;
+    }
+    .sheet-btn-row {
+      display: flex; gap: 10px; margin-bottom: 12px;
+    }
+    .sheet-btn-row .btn-status { flex: 1; }
+
     /* ── No-config banner ── */
     .setup-banner {
       margin: 16px;
@@ -416,6 +465,24 @@
   <div class="config-hint">
     כתובת ה-Script נשמרת במכשיר זה בלבד.<br>
     תמונת דן נשמרת ב-Google Sheets ומשותפת לכולם.
+  </div>
+</div>
+
+<!-- Edit previous day — bottom sheet -->
+<div class="sheet-backdrop hidden" id="editBackdrop" onclick="closeEditSheet(event)">
+  <div class="edit-sheet" id="editSheet">
+    <div class="sheet-header">
+      <span class="sheet-title" id="editSheetTitle">עריכת יום</span>
+      <button class="btn-sheet-close" onclick="hideEditSheet()">✕</button>
+    </div>
+    <div class="sheet-btn-row">
+      <button class="btn-status btn-good"    id="editBtnGood"    onclick="editSelectStatus('good')">😊 יום טוב</button>
+      <button class="btn-status btn-violent" id="editBtnViolent" onclick="editSelectStatus('violent')">😤 היה אלים</button>
+    </div>
+    <div class="note-area visible" style="margin-top:0">
+      <textarea id="editNoteInput" placeholder="הוסף הערה (לא חובה)..."></textarea>
+      <button class="btn-save" onclick="saveEditSheet()">💾 שמור</button>
+    </div>
   </div>
 </div>
 
@@ -572,15 +639,26 @@ function renderDays(days) {
     const label = isToday ? `היום · ${shortDate(key)}` : hebrewDate(key);
 
     return `
-      <div class="${cls}">
+      <div class="${cls}" data-key="${key}" data-entry="${e ? esc(JSON.stringify(e)) : ''}">
         <span class="day-emoji">${emoji}</span>
         <div class="day-info">
           <div class="day-name">${label}</div>
           ${e && e.note ? `<div class="day-note">${esc(e.note)}</div>` : ''}
+          <div class="day-edit-hint">לחץ לעריכה ✏️</div>
         </div>
         <span class="day-badge">${badge}</span>
       </div>`;
   }).join('');
+
+  // Attach click listeners after rendering (safe — no inline JSON escaping issues)
+  document.querySelectorAll('#daysGrid .day-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const key   = card.dataset.key;
+      const raw   = card.dataset.entry;
+      const entry = raw ? JSON.parse(raw) : null;
+      openEditSheet(key, entry);
+    });
+  });
 }
 
 function render(data) {
@@ -737,6 +815,80 @@ function esc(str) {
   return String(str)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Edit previous days ───────────────────────────────────────
+const editState = { dateKey: null, selectedStatus: null };
+
+function openEditSheet(dateKey, entry) {
+  editState.dateKey        = dateKey;
+  editState.selectedStatus = null;
+
+  document.getElementById('editSheetTitle').textContent =
+    dateKey === state.todayKey
+      ? `עריכה: היום · ${shortDate(dateKey)}`
+      : `עריכה: ${hebrewDate(dateKey)}`;
+
+  document.getElementById('editNoteInput').value = entry ? (entry.note || '') : '';
+
+  // Pre-highlight existing status
+  const btnG = document.getElementById('editBtnGood');
+  const btnV = document.getElementById('editBtnViolent');
+  btnG.classList.remove('active');
+  btnV.classList.remove('active');
+  if (entry && entry.status) {
+    editState.selectedStatus = entry.status;
+    if (entry.status === 'good')    btnG.classList.add('active');
+    if (entry.status === 'violent') btnV.classList.add('active');
+  }
+
+  document.getElementById('editBackdrop').classList.remove('hidden');
+}
+
+function editSelectStatus(status) {
+  editState.selectedStatus = status;
+  document.getElementById('editBtnGood')   .classList.toggle('active', status === 'good');
+  document.getElementById('editBtnViolent').classList.toggle('active', status === 'violent');
+}
+
+function hideEditSheet() {
+  document.getElementById('editBackdrop').classList.add('hidden');
+  editState.dateKey = editState.selectedStatus = null;
+}
+
+function closeEditSheet(e) {
+  if (e.target === document.getElementById('editBackdrop')) hideEditSheet();
+}
+
+async function saveEditSheet() {
+  if (!editState.selectedStatus) { showToast('בחר תחילה יום טוב או אלים'); return; }
+  if (!state.scriptUrl)          { showToast('הגדר את כתובת ה-Script בהגדרות ⚙️'); return; }
+
+  const note = document.getElementById('editNoteInput').value.trim();
+  showToast('שומר...');
+
+  try {
+    await fetch(state.scriptUrl, {
+      method:  'POST',
+      mode:    'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body:    JSON.stringify({ date: editState.dateKey, status: editState.selectedStatus, note }),
+    });
+  } catch (e) {
+    console.warn('Edit save network error:', e);
+  }
+
+  // Optimistic update
+  if (!state.data) state.data = { days: [], photoUrl: '' };
+  const idx   = state.data.days.findIndex(d => d.date === editState.dateKey);
+  const entry = { date: editState.dateKey, status: editState.selectedStatus, note };
+  if (idx >= 0) state.data.days[idx] = entry;
+  else          state.data.days.push(entry);
+
+  localStorage.setItem(LS_CACHE, JSON.stringify(state.data));
+  hideEditSheet();
+  render(state.data);
+  showToast('✓ נשמר בהצלחה!');
 }
 
 // ── Init ─────────────────────────────────────────────────────
