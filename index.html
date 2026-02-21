@@ -685,7 +685,7 @@ async function saveToday() {
   // Optimistic update — UI is always responsive
   if (!state.data) state.data = { days: [], photoUrl: '' };
   const idx = state.data.days.findIndex(d => d.date === state.todayKey);
-  const entry = { date: state.todayKey, status: state.selectedStatus, note };
+  const entry = { date: state.todayKey, status: state.selectedStatus, note, timestamp: new Date().toISOString() };
   if (idx >= 0) state.data.days[idx] = entry;
   else          state.data.days.push(entry);
 
@@ -740,10 +740,13 @@ async function loadData() {
   try {
     const resp = await fetch(`${state.scriptUrl}?action=getData`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data  = await resp.json();
-    state.data  = data;
-    localStorage.setItem(LS_CACHE, JSON.stringify(data));
-    render(data);
+    const data   = await resp.json();
+    // Merge: local entries newer than the server version are kept
+    // (prevents optimistic saves from being overwritten before GAS processes them)
+    const merged = mergeWithLocal(data, state.data);
+    state.data   = merged;
+    localStorage.setItem(LS_CACHE, JSON.stringify(merged));
+    render(merged);
   } catch (e) {
     console.error('Load error:', e);
     if (!state.data) {
@@ -769,6 +772,28 @@ function esc(str) {
   return String(str)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Merge helper ─────────────────────────────────────────────
+// Prevents loadData() from erasing an optimistic save that hasn't
+// synced to the server yet.  For each date, whichever version has a
+// newer ISO timestamp wins; local-only entries (pending sync) are kept.
+function mergeWithLocal(serverData, localData) {
+  if (!localData || !Array.isArray(localData.days) || !localData.days.length) return serverData;
+
+  const result    = { ...serverData, days: [...serverData.days] };
+  const serverMap = new Map(serverData.days.map(d => [d.date, d]));
+
+  for (const local of localData.days) {
+    const server = serverMap.get(local.date);
+    if (!server) {
+      result.days.push(local);                    // server doesn't have it yet
+    } else if (local.timestamp && local.timestamp > (server.timestamp || '')) {
+      const i = result.days.findIndex(d => d.date === local.date);
+      if (i >= 0) result.days[i] = local;         // local is newer — use it
+    }
+  }
+  return result;
 }
 
 // ── API helper ───────────────────────────────────────────────
@@ -837,7 +862,7 @@ function saveEditSheet() {
   // Optimistic update
   if (!state.data) state.data = { days: [], photoUrl: '' };
   const idx   = state.data.days.findIndex(d => d.date === editState.dateKey);
-  const entry = { date: editState.dateKey, status: editState.selectedStatus, note };
+  const entry = { date: editState.dateKey, status: editState.selectedStatus, note, timestamp: new Date().toISOString() };
   if (idx >= 0) state.data.days[idx] = entry;
   else          state.data.days.push(entry);
 
