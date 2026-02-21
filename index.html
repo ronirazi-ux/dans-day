@@ -237,70 +237,6 @@
     .day-card.violent .day-badge { background: #fed7d7; color: #742a2a; }
     .day-card.empty   .day-badge { background: #edf2f7; color: #a0aec0; }
 
-    /* ── Config ── */
-    .config-toggle {
-      display: block;
-      margin: 20px auto 0;
-      background: none;
-      border: none;
-      color: #a0aec0;
-      font-size: 0.85em;
-      cursor: pointer;
-      font-family: inherit;
-      padding: 6px;
-    }
-    .config-toggle:hover { color: #718096; }
-    .config-panel {
-      margin: 8px 16px 0;
-      padding: 18px;
-      background: white;
-      border-radius: 18px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
-      display: none;
-    }
-    .config-panel.open { display: block; }
-    .config-panel .card-title { margin-bottom: 16px; }
-    .field { margin-bottom: 14px; }
-    .field label {
-      display: block;
-      font-size: 0.84em;
-      color: #718096;
-      margin-bottom: 5px;
-      font-weight: 600;
-    }
-    .field input {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 10px;
-      font-size: 0.9em;
-      direction: ltr;
-      color: #2d3748;
-    }
-    .field input:focus {
-      outline: none;
-      border-color: #4299e1;
-    }
-    .btn-config-save {
-      width: 100%;
-      padding: 11px;
-      background: #718096;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-family: inherit;
-      font-size: 0.93em;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .btn-config-save:active { background: #4a5568; }
-    .config-hint {
-      font-size: 0.78em;
-      color: #a0aec0;
-      margin-top: 10px;
-      text-align: center;
-      line-height: 1.5;
-    }
 
     /* ── Spinner ── */
     .loading {
@@ -449,19 +385,6 @@
   </div>
 </div>
 
-<!-- Config toggle -->
-<button class="config-toggle" onclick="toggleConfig()">⚙️ הגדרות</button>
-<div class="config-panel" id="configPanel">
-  <div class="card-title">הגדרות חיבור</div>
-  <div class="field">
-    <label>כתובת Google Apps Script (URL)</label>
-    <input type="url" id="cfgScriptUrl" placeholder="https://script.google.com/macros/s/...">
-  </div>
-  <button class="btn-config-save" onclick="saveConfig()">שמור הגדרות</button>
-  <div class="config-hint">
-    כתובת ה-Script נשמרת במכשיר זה בלבד.
-  </div>
-</div>
 
 <!-- Edit previous day — bottom sheet -->
 <div class="sheet-backdrop hidden" id="editBackdrop" onclick="closeEditSheet(event)">
@@ -486,12 +409,12 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────
-const LS_URL   = 'dans_day_script_url';
-const LS_CACHE = 'dans_day_cache';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzEbbh-7uSv15Cl0ydBORPmB8TZ_YfGnf6xJZBwTHFzyrxe3Ek3nEPh1Ezv9p1FjDROWQ/exec';
+const LS_CACHE   = 'dans_day_cache';
 
 // ── State ────────────────────────────────────────────────────
 const state = {
-  scriptUrl:      localStorage.getItem(LS_URL) || '',
+  scriptUrl:      SCRIPT_URL,
   data:           null,   // { days: [{date, status, note}], photoUrl: '' }
   selectedStatus: null,
   todayKey:       todayDateKey(),
@@ -675,7 +598,6 @@ function resetForm() {
 
 async function saveToday() {
   if (!state.selectedStatus) { showToast('בחר תחילה יום טוב או אלים'); return; }
-  if (!state.scriptUrl)      { showToast('הגדר את כתובת ה-Script בהגדרות ⚙️'); return; }
 
   const note = document.getElementById('noteInput').value.trim();
 
@@ -694,26 +616,6 @@ async function saveToday() {
   showToast('✓ נשמר בהצלחה!');
 }
 
-// ── Config ───────────────────────────────────────────────────
-function toggleConfig() {
-  const panel = document.getElementById('configPanel');
-  const open  = panel.classList.toggle('open');
-  if (open) {
-    document.getElementById('cfgScriptUrl').value = state.scriptUrl;
-  }
-}
-
-function saveConfig() {
-  const url = document.getElementById('cfgScriptUrl').value.trim();
-  if (url) {
-    state.scriptUrl = url;
-    localStorage.setItem(LS_URL, url);
-  }
-  document.getElementById('configPanel').classList.remove('open');
-  showToast('✓ הגדרות נשמרו');
-  if (url) loadData();
-}
-
 // ── Data loading ─────────────────────────────────────────────
 async function loadData() {
   // Show cached data immediately while fetching
@@ -725,16 +627,6 @@ async function loadData() {
     } catch (_) {}
   } else {
     renderHeader();
-  }
-
-  if (!state.scriptUrl) {
-    document.getElementById('daysGrid').innerHTML = `
-      <div class="setup-banner">
-        לא הוגדר חיבור ל-Google Sheets.<br>
-        לחץ על <strong>⚙️ הגדרות</strong> בתחתית העמוד<br>
-        ולהדביק את כתובת ה-Script.
-      </div>`;
-    return;
   }
 
   try {
@@ -852,7 +744,6 @@ function closeEditSheet(e) {
 
 function saveEditSheet() {
   if (!editState.selectedStatus) { showToast('בחר תחילה יום טוב או אלים'); return; }
-  if (!state.scriptUrl)          { showToast('הגדר את כתובת ה-Script בהגדרות ⚙️'); return; }
 
   const note = document.getElementById('editNoteInput').value.trim();
 
