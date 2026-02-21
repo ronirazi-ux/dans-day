@@ -437,6 +437,11 @@ const state = {
   todayKey:       todayDateKey(),
 };
 
+// Entries saved in THIS browser session that haven't been confirmed by the
+// server yet.  This is the ONLY thing mergeWithLocal injects on top of the
+// server response — historical localStorage data is uploaded separately.
+const sessionPending = new Map(); // date → entry
+
 // ── Date helpers ─────────────────────────────────────────────
 function todayDateKey() {
   const d = new Date();
@@ -616,15 +621,15 @@ function resetForm() {
 async function saveToday() {
   if (!state.selectedStatus) { showToast('בחר תחילה יום טוב או אלים'); return; }
 
-  const note = document.getElementById('noteInput').value.trim();
+  const note  = document.getElementById('noteInput').value.trim();
+  const entry = { date: state.todayKey, status: state.selectedStatus, note, timestamp: new Date().toISOString() };
 
-  // Fire-and-forget to GAS (GET + no-cors: request reaches doGet, no CORS errors)
+  sessionPending.set(state.todayKey, entry);   // track until server confirms
   apiSaveDay(state.todayKey, state.selectedStatus, note);
 
   // Optimistic update — UI is always responsive
   if (!state.data) state.data = { days: [], photoUrl: '' };
   const idx = state.data.days.findIndex(d => d.date === state.todayKey);
-  const entry = { date: state.todayKey, status: state.selectedStatus, note, timestamp: new Date().toISOString() };
   if (idx >= 0) state.data.days[idx] = entry;
   else          state.data.days.push(entry);
 
@@ -738,26 +743,26 @@ function esc(str) {
 }
 
 // ── Merge helper ─────────────────────────────────────────────
-// Prevents loadData() from erasing an optimistic save that hasn't
-// synced to the server yet.  For each date, whichever version has a
-// newer ISO timestamp wins; local-only entries (pending sync) are kept.
+// Server is the single source of truth.  The ONLY local data overlaid on
+// top of the server response is sessionPending — entries saved in this tab
+// during this session that haven't been confirmed by the server yet.
+// Historical localStorage data is uploaded to the server by
+// syncPendingToServer; once it's there, this function won't re-add it.
 function mergeWithLocal(serverData, localData) {
-  // Guard: if server sent an error object or missing days, fall back to local
+  // Guard: bad server response → fall back to whatever we have locally
   if (!serverData || !Array.isArray(serverData.days)) {
     return localData || { days: [], photoUrl: '' };
   }
-  if (!localData || !Array.isArray(localData.days) || !localData.days.length) return serverData;
+  if (!sessionPending.size) return serverData;
 
   const result    = { ...serverData, days: [...serverData.days] };
   const serverMap = new Map(serverData.days.map(d => [d.date, d]));
 
-  for (const local of localData.days) {
-    const server = serverMap.get(local.date);
-    if (!server) {
-      result.days.push(local);                    // server doesn't have it yet
-    } else if (local.timestamp && local.timestamp > (server.timestamp || '')) {
-      const i = result.days.findIndex(d => d.date === local.date);
-      if (i >= 0) result.days[i] = local;         // local is newer — use it
+  for (const [date, entry] of sessionPending) {
+    if (!serverMap.has(date)) {
+      result.days.push(entry);       // not yet on server — show optimistically
+    } else {
+      sessionPending.delete(date);   // server confirmed — no longer pending
     }
   }
   return result;
@@ -781,7 +786,8 @@ async function apiSaveDay(date, status, note) {
       return;
     }
     if (!Array.isArray(serverData.days)) return;
-    // Server confirmed — merge (keeps any newer local edits on top)
+    // Server confirmed — clear from pending, then merge
+    sessionPending.delete(date);
     const merged = mergeWithLocal(serverData, state.data);
     state.data = merged;
     localStorage.setItem(LS_CACHE, JSON.stringify(merged));
@@ -840,15 +846,15 @@ function closeEditSheet(e) {
 function saveEditSheet() {
   if (!editState.selectedStatus) { showToast('בחר תחילה יום טוב או אלים'); return; }
 
-  const note = document.getElementById('editNoteInput').value.trim();
+  const note  = document.getElementById('editNoteInput').value.trim();
+  const entry = { date: editState.dateKey, status: editState.selectedStatus, note, timestamp: new Date().toISOString() };
 
-  // Fire-and-forget to GAS
+  sessionPending.set(editState.dateKey, entry);  // track until server confirms
   apiSaveDay(editState.dateKey, editState.selectedStatus, note);
 
   // Optimistic update
   if (!state.data) state.data = { days: [], photoUrl: '' };
-  const idx   = state.data.days.findIndex(d => d.date === editState.dateKey);
-  const entry = { date: editState.dateKey, status: editState.selectedStatus, note, timestamp: new Date().toISOString() };
+  const idx = state.data.days.findIndex(d => d.date === editState.dateKey);
   if (idx >= 0) state.data.days[idx] = entry;
   else          state.data.days.push(entry);
 
