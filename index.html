@@ -457,14 +457,9 @@
     <label>כתובת Google Apps Script (URL)</label>
     <input type="url" id="cfgScriptUrl" placeholder="https://script.google.com/macros/s/...">
   </div>
-  <div class="field">
-    <label>קישור לתמונת דן מ-Google Drive <span style="font-weight:400">(לאדמין בלבד)</span></label>
-    <input type="url" id="cfgPhotoUrl" placeholder="https://drive.google.com/file/d/.../view">
-  </div>
   <button class="btn-config-save" onclick="saveConfig()">שמור הגדרות</button>
   <div class="config-hint">
-    כתובת ה-Script נשמרת במכשיר זה בלבד.<br>
-    תמונת דן נשמרת ב-Google Sheets ומשותפת לכולם.
+    כתובת ה-Script נשמרת במכשיר זה בלבד.
   </div>
 </div>
 
@@ -554,33 +549,20 @@ function calcStreak(days) {
   return streak;
 }
 
-// ── Photo helper ─────────────────────────────────────────────
-function driveEmbedUrl(url) {
-  if (!url) return null;
-  // Extract Google Drive file ID from share link
-  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w200`;
-  // Already a direct URL
-  return url;
-}
-
 // ── Render ───────────────────────────────────────────────────
-function renderHeader(photoUrl) {
+function renderHeader() {
   const d = new Date();
   document.getElementById('currentDate').textContent =
     `יום ${HE_DAYS[d.getDay()]}, ${d.getDate()} ב${HE_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 
   const img = document.getElementById('profilePhoto');
-  const src = driveEmbedUrl(photoUrl);
-  if (src) {
-    img.src = src;
-    img.style.display = 'block';
-    document.getElementById('photoFallback').style.display = 'none';
-    img.onerror = () => {
-      img.style.display = 'none';
-      document.getElementById('photoFallback').style.display = '';
-    };
-  }
+  img.src = 'dan.png';
+  img.style.display = 'block';
+  document.getElementById('photoFallback').style.display = 'none';
+  img.onerror = () => {
+    img.style.display = 'none';
+    document.getElementById('photoFallback').style.display = '';
+  };
 }
 
 function renderStreak(days) {
@@ -662,11 +644,10 @@ function renderDays(days) {
 }
 
 function render(data) {
-  renderHeader(data.photoUrl);
+  renderHeader();
   renderStreak(data.days);
   renderToday(data.days);
   renderDays(data.days);
-  if (data.photoUrl) document.getElementById('cfgPhotoUrl').value = data.photoUrl;
 }
 
 // ── User actions ─────────────────────────────────────────────
@@ -697,18 +678,20 @@ async function saveToday() {
   if (!state.scriptUrl)      { showToast('הגדר את כתובת ה-Script בהגדרות ⚙️'); return; }
 
   const note = document.getElementById('noteInput').value.trim();
-  showToast('שומר...');
 
-  try {
-    const data = await apiSaveDay(state.todayKey, state.selectedStatus, note);
-    state.data = data;
-    localStorage.setItem(LS_CACHE, JSON.stringify(data));
-    render(data);
-    showToast('✓ נשמר בהצלחה!');
-  } catch (e) {
-    console.warn('Save error:', e);
-    showToast('שגיאה בשמירה — בדוק חיבור');
-  }
+  // Fire-and-forget to GAS (GET + no-cors: request reaches doGet, no CORS errors)
+  apiSaveDay(state.todayKey, state.selectedStatus, note);
+
+  // Optimistic update — UI is always responsive
+  if (!state.data) state.data = { days: [], photoUrl: '' };
+  const idx = state.data.days.findIndex(d => d.date === state.todayKey);
+  const entry = { date: state.todayKey, status: state.selectedStatus, note };
+  if (idx >= 0) state.data.days[idx] = entry;
+  else          state.data.days.push(entry);
+
+  localStorage.setItem(LS_CACHE, JSON.stringify(state.data));
+  render(state.data);
+  showToast('✓ נשמר בהצלחה!');
 }
 
 // ── Config ───────────────────────────────────────────────────
@@ -720,25 +703,12 @@ function toggleConfig() {
   }
 }
 
-async function saveConfig() {
-  const url      = document.getElementById('cfgScriptUrl').value.trim();
-  const photoUrl = document.getElementById('cfgPhotoUrl').value.trim();
-
+function saveConfig() {
+  const url = document.getElementById('cfgScriptUrl').value.trim();
   if (url) {
     state.scriptUrl = url;
     localStorage.setItem(LS_URL, url);
   }
-
-  // If admin entered a photo URL, push it to the sheet
-  if (photoUrl && url) {
-    try {
-      await fetch(`${url}?action=setPhoto&photoUrl=${encodeURIComponent(photoUrl)}`);
-      if (state.data) { state.data.photoUrl = photoUrl; localStorage.setItem(LS_CACHE, JSON.stringify(state.data)); }
-    } catch (e) {
-      console.warn('Photo save error:', e);
-    }
-  }
-
   document.getElementById('configPanel').classList.remove('open');
   showToast('✓ הגדרות נשמרו');
   if (url) loadData();
@@ -754,7 +724,7 @@ async function loadData() {
       render(state.data);
     } catch (_) {}
   } else {
-    renderHeader('');
+    renderHeader();
   }
 
   if (!state.scriptUrl) {
@@ -802,14 +772,14 @@ function esc(str) {
 }
 
 // ── API helper ───────────────────────────────────────────────
-async function apiSaveDay(date, status, note) {
+// GET + no-cors: params survive GAS's cross-origin redirect (POST body doesn't).
+// Response is opaque so we can't read it — caller does an optimistic local update.
+function apiSaveDay(date, status, note) {
   const url = `${state.scriptUrl}?action=saveDay` +
     `&date=${encodeURIComponent(date)}` +
     `&status=${encodeURIComponent(status)}` +
     `&note=${encodeURIComponent(note || '')}`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return resp.json();
+  fetch(url, { mode: 'no-cors' }).catch(() => {});  // fire-and-forget
 }
 
 // ── Edit previous days ───────────────────────────────────────
@@ -855,24 +825,26 @@ function closeEditSheet(e) {
   if (e.target === document.getElementById('editBackdrop')) hideEditSheet();
 }
 
-async function saveEditSheet() {
+function saveEditSheet() {
   if (!editState.selectedStatus) { showToast('בחר תחילה יום טוב או אלים'); return; }
   if (!state.scriptUrl)          { showToast('הגדר את כתובת ה-Script בהגדרות ⚙️'); return; }
 
   const note = document.getElementById('editNoteInput').value.trim();
-  showToast('שומר...');
 
-  try {
-    const data = await apiSaveDay(editState.dateKey, editState.selectedStatus, note);
-    state.data = data;
-    localStorage.setItem(LS_CACHE, JSON.stringify(data));
-    hideEditSheet();
-    render(data);
-    showToast('✓ נשמר בהצלחה!');
-  } catch (e) {
-    console.warn('Edit save error:', e);
-    showToast('שגיאה בשמירה — בדוק חיבור');
-  }
+  // Fire-and-forget to GAS
+  apiSaveDay(editState.dateKey, editState.selectedStatus, note);
+
+  // Optimistic update
+  if (!state.data) state.data = { days: [], photoUrl: '' };
+  const idx   = state.data.days.findIndex(d => d.date === editState.dateKey);
+  const entry = { date: editState.dateKey, status: editState.selectedStatus, note };
+  if (idx >= 0) state.data.days[idx] = entry;
+  else          state.data.days.push(entry);
+
+  localStorage.setItem(LS_CACHE, JSON.stringify(state.data));
+  hideEditSheet();
+  render(state.data);
+  showToast('✓ נשמר בהצלחה!');
 }
 
 // ── Init ─────────────────────────────────────────────────────
