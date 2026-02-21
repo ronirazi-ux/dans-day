@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>היום של דן</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      color: #2d3748;
+      direction: rtl;
+      min-height: 100vh;
+      padding-bottom: 40px;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #48bb78, #4299e1);
+      color: white;
+      padding: 24px 20px 28px;
+      text-align: center;
+      border-radius: 0 0 28px 28px;
+      box-shadow: 0 6px 20px rgba(66, 153, 225, 0.35);
+    }
+    .photo-wrap {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.85);
+      overflow: hidden;
+      margin: 0 auto 14px;
+      background: rgba(255,255,255,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 44px;
+    }
+    .photo-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    .header h1 { font-size: 1.9em; font-weight: 700; letter-spacing: -0.5px; }
+    .header .date-sub { font-size: 0.95em; opacity: 0.88; margin-top: 4px; }
+
+    /* ── Streak ── */
+    .streak-card {
+      margin: 18px 16px 0;
+      padding: 18px 20px;
+      background: white;
+      border-radius: 18px;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+      border-right: 5px solid #48bb78;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .streak-card.zero { border-right-color: #f6ad55; }
+    .streak-icon { font-size: 2.4em; }
+    .streak-body { flex: 1; text-align: right; }
+    .streak-num {
+      font-size: 2.6em;
+      font-weight: 800;
+      color: #48bb78;
+      line-height: 1;
+    }
+    .streak-card.zero .streak-num { color: #f6ad55; }
+    .streak-label { font-size: 0.88em; color: #718096; margin-top: 2px; }
+
+    /* ── Card wrapper ── */
+    .card {
+      margin: 14px 16px 0;
+      padding: 18px;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    }
+    .card-title {
+      font-size: 1.05em;
+      font-weight: 700;
+      color: #4a5568;
+      margin-bottom: 14px;
+    }
+
+    /* ── Status buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+    }
+    .btn-status {
+      flex: 1;
+      padding: 18px 10px;
+      font-size: 1.05em;
+      font-family: inherit;
+      border: 2px solid transparent;
+      border-radius: 14px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: all 0.18s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-good {
+      background: #f0fff4;
+      color: #276749;
+      border-color: #9ae6b4;
+    }
+    .btn-good:active, .btn-good.active {
+      background: #48bb78;
+      color: white;
+      border-color: #48bb78;
+      transform: scale(0.97);
+    }
+    .btn-violent {
+      background: #fff5f5;
+      color: #9b2335;
+      border-color: #feb2b2;
+    }
+    .btn-violent:active, .btn-violent.active {
+      background: #f56565;
+      color: white;
+      border-color: #f56565;
+      transform: scale(0.97);
+    }
+
+    /* ── Note area ── */
+    .note-area {
+      display: none;
+      margin-top: 14px;
+      animation: slideDown 0.2s ease;
+    }
+    .note-area.visible { display: block; }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .note-area textarea {
+      width: 100%;
+      padding: 11px 13px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.96em;
+      resize: none;
+      direction: rtl;
+      min-height: 80px;
+      color: #2d3748;
+      background: #f7fafc;
+      transition: border-color 0.15s;
+    }
+    .note-area textarea:focus {
+      outline: none;
+      border-color: #4299e1;
+      background: white;
+    }
+    .btn-save {
+      margin-top: 10px;
+      width: 100%;
+      padding: 13px;
+      background: #4299e1;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1em;
+      font-family: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-save:active { background: #2b6cb0; }
+
+    /* ── Today saved display ── */
+    .today-saved {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+    .today-saved.good  { background: #f0fff4; }
+    .today-saved.violent { background: #fff5f5; }
+    .today-saved-emoji { font-size: 2em; line-height: 1; }
+    .today-saved-body { flex: 1; }
+    .today-saved-label { font-weight: 700; font-size: 1em; }
+    .today-saved-note  { font-size: 0.87em; color: #718096; margin-top: 4px; line-height: 1.4; }
+    .btn-edit {
+      padding: 6px 14px;
+      background: transparent;
+      border: 1.5px solid #cbd5e0;
+      border-radius: 8px;
+      font-size: 0.84em;
+      cursor: pointer;
+      color: #718096;
+      font-family: inherit;
+      white-space: nowrap;
+      margin-top: 2px;
+    }
+
+    /* ── History ── */
+    .days-list {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .day-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #f7fafc;
+      border-radius: 12px;
+      padding: 12px 14px;
+      border-right: 4px solid #e2e8f0;
+    }
+    .day-card.good    { border-right-color: #48bb78; background: #f0fff4; }
+    .day-card.violent { border-right-color: #f56565; background: #fff5f5; }
+    .day-card.is-today { outline: 2px solid #4299e1; outline-offset: 1px; }
+    .day-emoji { font-size: 1.5em; flex-shrink: 0; }
+    .day-info  { flex: 1; min-width: 0; }
+    .day-name  { font-weight: 700; font-size: 0.93em; color: #2d3748; }
+    .day-date  { font-size: 0.78em; color: #a0aec0; }
+    .day-note  { font-size: 0.8em; color: #718096; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .day-badge {
+      font-size: 0.78em;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .day-card.good    .day-badge { background: #c6f6d5; color: #22543d; }
+    .day-card.violent .day-badge { background: #fed7d7; color: #742a2a; }
+    .day-card.empty   .day-badge { background: #edf2f7; color: #a0aec0; }
+
+    /* ── Config ── */
+    .config-toggle {
+      display: block;
+      margin: 20px auto 0;
+      background: none;
+      border: none;
+      color: #a0aec0;
+      font-size: 0.85em;
+      cursor: pointer;
+      font-family: inherit;
+      padding: 6px;
+    }
+    .config-toggle:hover { color: #718096; }
+    .config-panel {
+      margin: 8px 16px 0;
+      padding: 18px;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+      display: none;
+    }
+    .config-panel.open { display: block; }
+    .config-panel .card-title { margin-bottom: 16px; }
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 0.84em;
+      color: #718096;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    .field input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 0.9em;
+      direction: ltr;
+      color: #2d3748;
+    }
+    .field input:focus {
+      outline: none;
+      border-color: #4299e1;
+    }
+    .btn-config-save {
+      width: 100%;
+      padding: 11px;
+      background: #718096;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.93em;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-config-save:active { background: #4a5568; }
+    .config-hint {
+      font-size: 0.78em;
+      color: #a0aec0;
+      margin-top: 10px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* ── Spinner ── */
+    .loading {
+      text-align: center;
+      padding: 24px;
+      color: #a0aec0;
+    }
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #4299e1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2d3748;
+      color: white;
+      padding: 10px 22px;
+      border-radius: 22px;
+      font-size: 0.92em;
+      z-index: 9999;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .toast.show { opacity: 1; }
+
+    /* ── No-config banner ── */
+    .setup-banner {
+      margin: 16px;
+      padding: 16px;
+      background: #ebf8ff;
+      border: 1.5px dashed #90cdf4;
+      border-radius: 14px;
+      text-align: center;
+      color: #2b6cb0;
+      font-size: 0.92em;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="photo-wrap" id="photoWrap">
+    <span id="photoFallback">⭐</span>
+    <img id="profilePhoto" alt="דן">
+  </div>
+  <h1>היום של דן 🌟</h1>
+  <div class="date-sub" id="currentDate">טוען...</div>
+</header>
+
+<!-- Streak -->
+<div class="streak-card" id="streakCard">
+  <div class="streak-icon">🕊️</div>
+  <div class="streak-body">
+    <div class="streak-num" id="streakNum">—</div>
+    <div class="streak-label">ימים ברצף ללא אלימות</div>
+  </div>
+</div>
+
+<!-- Today's entry -->
+<div class="card" id="todayCard">
+  <div class="card-title">איך היה היום?</div>
+  <div id="todaySaved" style="display:none"></div>
+  <div id="todayForm">
+    <div class="btn-row">
+      <button class="btn-status btn-good"    onclick="selectStatus('good')">😊 יום טוב</button>
+      <button class="btn-status btn-violent" onclick="selectStatus('violent')">😤 היה אלים</button>
+    </div>
+    <div class="note-area" id="noteArea">
+      <textarea id="noteInput" placeholder="הוסף הערה (לא חובה)..."></textarea>
+      <button class="btn-save" onclick="saveToday()">💾 שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- Last 5 days -->
+<div class="card">
+  <div class="card-title">5 ימים אחרונים</div>
+  <div id="daysGrid">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div>טוען נתונים...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Config toggle -->
+<button class="config-toggle" onclick="toggleConfig()">⚙️ הגדרות</button>
+<div class="config-panel" id="configPanel">
+  <div class="card-title">הגדרות חיבור</div>
+  <div class="field">
+    <label>כתובת Google Apps Script (URL)</label>
+    <input type="url" id="cfgScriptUrl" placeholder="https://script.google.com/macros/s/...">
+  </div>
+  <div class="field">
+    <label>קישור לתמונת דן מ-Google Drive <span style="font-weight:400">(לאדמין בלבד)</span></label>
+    <input type="url" id="cfgPhotoUrl" placeholder="https://drive.google.com/file/d/.../view">
+  </div>
+  <button class="btn-config-save" onclick="saveConfig()">שמור הגדרות</button>
+  <div class="config-hint">
+    כתובת ה-Script נשמרת במכשיר זה בלבד.<br>
+    תמונת דן נשמרת ב-Google Sheets ומשותפת לכולם.
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────
+const LS_URL   = 'dans_day_script_url';
+const LS_CACHE = 'dans_day_cache';
+
+// ── State ────────────────────────────────────────────────────
+const state = {
+  scriptUrl:      localStorage.getItem(LS_URL) || '',
+  data:           null,   // { days: [{date, status, note}], photoUrl: '' }
+  selectedStatus: null,
+  todayKey:       todayDateKey(),
+};
+
+// ── Date helpers ─────────────────────────────────────────────
+function todayDateKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function pad(n) { return String(n).padStart(2,'0'); }
+
+const HE_DAYS   = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני',
+                   'יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+function hebrewDate(dateKey) {
+  const [y,m,d] = dateKey.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  return `יום ${HE_DAYS[dt.getDay()]} · ${d} ב${HE_MONTHS[m-1]}`;
+}
+
+function shortDate(dateKey) {
+  const [,m,d] = dateKey.split('-');
+  return `${d}/${m}`;
+}
+
+function last5Days() {
+  const keys = [];
+  const base = new Date();
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() - i);
+    keys.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
+  }
+  return keys;
+}
+
+// ── Streak ───────────────────────────────────────────────────
+function calcStreak(days) {
+  const map = {};
+  (days || []).forEach(d => { map[d.date] = d; });
+
+  let streak = 0;
+  const cursor = new Date();
+  for (let i = 0; i < 365; i++) {
+    const key = `${cursor.getFullYear()}-${pad(cursor.getMonth()+1)}-${pad(cursor.getDate())}`;
+    if (map[key]) {
+      if (map[key].status === 'violent') break;
+      if (map[key].status === 'good')    streak++;
+    }
+    // no entry = could be weekend/holiday, don't break streak
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+// ── Photo helper ─────────────────────────────────────────────
+function driveEmbedUrl(url) {
+  if (!url) return null;
+  // Extract Google Drive file ID from share link
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w200`;
+  // Already a direct URL
+  return url;
+}
+
+// ── Render ───────────────────────────────────────────────────
+function renderHeader(photoUrl) {
+  const d = new Date();
+  document.getElementById('currentDate').textContent =
+    `יום ${HE_DAYS[d.getDay()]}, ${d.getDate()} ב${HE_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+
+  const img = document.getElementById('profilePhoto');
+  const src = driveEmbedUrl(photoUrl);
+  if (src) {
+    img.src = src;
+    img.style.display = 'block';
+    document.getElementById('photoFallback').style.display = 'none';
+    img.onerror = () => {
+      img.style.display = 'none';
+      document.getElementById('photoFallback').style.display = '';
+    };
+  }
+}
+
+function renderStreak(days) {
+  const n = calcStreak(days);
+  document.getElementById('streakNum').textContent = n;
+  document.getElementById('streakCard').classList.toggle('zero', n === 0);
+}
+
+function renderToday(days) {
+  const entry = (days || []).find(d => d.date === state.todayKey);
+  const savedEl = document.getElementById('todaySaved');
+  const formEl  = document.getElementById('todayForm');
+
+  if (entry) {
+    const good = entry.status === 'good';
+    savedEl.style.display = 'flex';
+    savedEl.className = `today-saved ${entry.status}`;
+    savedEl.innerHTML = `
+      <span class="today-saved-emoji">${good ? '😊' : '😤'}</span>
+      <div class="today-saved-body">
+        <div class="today-saved-label">${good ? 'יום טוב! 🎉' : 'היה אלים 😤'}</div>
+        ${entry.note ? `<div class="today-saved-note">${esc(entry.note)}</div>` : ''}
+      </div>
+      <button class="btn-edit" onclick="editToday()">ערוך</button>
+    `;
+    formEl.style.display = 'none';
+    state.selectedStatus = null;
+  } else {
+    savedEl.style.display = 'none';
+    formEl.style.display  = '';
+    resetForm();
+  }
+}
+
+function renderDays(days) {
+  const map = {};
+  (days || []).forEach(d => { map[d.date] = d; });
+  const keys = last5Days();
+
+  document.getElementById('daysGrid').innerHTML = keys.map((key, i) => {
+    const e = map[key];
+    const isToday = i === 0;
+
+    let cls   = 'day-card';
+    let emoji = '⬜';
+    let badge = 'לא נרשם';
+
+    if (e) {
+      if (e.status === 'good')    { cls += ' good';    emoji = '😊'; badge = 'יום טוב';  }
+      if (e.status === 'violent') { cls += ' violent'; emoji = '😤'; badge = 'היה אלים'; }
+    } else {
+      cls += ' empty';
+    }
+    if (isToday) cls += ' is-today';
+
+    const label = isToday ? `היום · ${shortDate(key)}` : hebrewDate(key);
+
+    return `
+      <div class="${cls}">
+        <span class="day-emoji">${emoji}</span>
+        <div class="day-info">
+          <div class="day-name">${label}</div>
+          ${e && e.note ? `<div class="day-note">${esc(e.note)}</div>` : ''}
+        </div>
+        <span class="day-badge">${badge}</span>
+      </div>`;
+  }).join('');
+}
+
+function render(data) {
+  renderHeader(data.photoUrl);
+  renderStreak(data.days);
+  renderToday(data.days);
+  renderDays(data.days);
+  if (data.photoUrl) document.getElementById('cfgPhotoUrl').value = data.photoUrl;
+}
+
+// ── User actions ─────────────────────────────────────────────
+function selectStatus(status) {
+  state.selectedStatus = status;
+  document.querySelector('.btn-good').classList.toggle('active',    status === 'good');
+  document.querySelector('.btn-violent').classList.toggle('active', status === 'violent');
+  document.getElementById('noteArea').classList.add('visible');
+  document.getElementById('noteInput').focus();
+}
+
+function editToday() {
+  document.getElementById('todaySaved').style.display = 'none';
+  document.getElementById('todayForm').style.display  = '';
+  state.selectedStatus = null;
+  resetForm();
+}
+
+function resetForm() {
+  document.querySelector('.btn-good').classList.remove('active');
+  document.querySelector('.btn-violent').classList.remove('active');
+  document.getElementById('noteArea').classList.remove('visible');
+  document.getElementById('noteInput').value = '';
+}
+
+async function saveToday() {
+  if (!state.selectedStatus) { showToast('בחר תחילה יום טוב או אלים'); return; }
+  if (!state.scriptUrl)      { showToast('הגדר את כתובת ה-Script בהגדרות ⚙️'); return; }
+
+  const note = document.getElementById('noteInput').value.trim();
+  showToast('שומר...');
+
+  try {
+    await fetch(state.scriptUrl, {
+      method:  'POST',
+      mode:    'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body:    JSON.stringify({ date: state.todayKey, status: state.selectedStatus, note }),
+    });
+  } catch (e) {
+    console.warn('Save network error:', e);
+  }
+
+  // Optimistic update (no-cors means we can't read the response)
+  if (!state.data) state.data = { days: [], photoUrl: '' };
+  const idx = state.data.days.findIndex(d => d.date === state.todayKey);
+  const entry = { date: state.todayKey, status: state.selectedStatus, note };
+  if (idx >= 0) state.data.days[idx] = entry;
+  else          state.data.days.push(entry);
+
+  localStorage.setItem(LS_CACHE, JSON.stringify(state.data));
+  render(state.data);
+  showToast('✓ נשמר בהצלחה!');
+}
+
+// ── Config ───────────────────────────────────────────────────
+function toggleConfig() {
+  const panel = document.getElementById('configPanel');
+  const open  = panel.classList.toggle('open');
+  if (open) {
+    document.getElementById('cfgScriptUrl').value = state.scriptUrl;
+  }
+}
+
+async function saveConfig() {
+  const url      = document.getElementById('cfgScriptUrl').value.trim();
+  const photoUrl = document.getElementById('cfgPhotoUrl').value.trim();
+
+  if (url) {
+    state.scriptUrl = url;
+    localStorage.setItem(LS_URL, url);
+  }
+
+  // If admin entered a photo URL, push it to the sheet
+  if (photoUrl && url) {
+    try {
+      await fetch(url, {
+        method:  'POST',
+        mode:    'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    JSON.stringify({ action: 'setPhoto', photoUrl }),
+      });
+      if (state.data) { state.data.photoUrl = photoUrl; localStorage.setItem(LS_CACHE, JSON.stringify(state.data)); }
+    } catch (e) {
+      console.warn('Photo save error:', e);
+    }
+  }
+
+  document.getElementById('configPanel').classList.remove('open');
+  showToast('✓ הגדרות נשמרו');
+  if (url) loadData();
+}
+
+// ── Data loading ─────────────────────────────────────────────
+async function loadData() {
+  // Show cached data immediately while fetching
+  const cached = localStorage.getItem(LS_CACHE);
+  if (cached) {
+    try {
+      state.data = JSON.parse(cached);
+      render(state.data);
+    } catch (_) {}
+  } else {
+    renderHeader('');
+  }
+
+  if (!state.scriptUrl) {
+    document.getElementById('daysGrid').innerHTML = `
+      <div class="setup-banner">
+        לא הוגדר חיבור ל-Google Sheets.<br>
+        לחץ על <strong>⚙️ הגדרות</strong> בתחתית העמוד<br>
+        ולהדביק את כתובת ה-Script.
+      </div>`;
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${state.scriptUrl}?action=getData`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data  = await resp.json();
+    state.data  = data;
+    localStorage.setItem(LS_CACHE, JSON.stringify(data));
+    render(data);
+  } catch (e) {
+    console.error('Load error:', e);
+    if (!state.data) {
+      document.getElementById('daysGrid').innerHTML =
+        '<div style="text-align:center;color:#f56565;padding:20px">לא ניתן לטעון נתונים.<br>בדוק את ה-URL בהגדרות.</div>';
+    } else {
+      showToast('מציג נתונים שמורים (אין חיבור)');
+    }
+  }
+}
+
+// ── Utils ────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ─────────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>
