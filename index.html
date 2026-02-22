@@ -437,10 +437,6 @@ const state = {
   todayKey:       todayDateKey(),
 };
 
-// Entries saved in THIS browser session that haven't been confirmed by the
-// server yet.  This is the ONLY thing mergeWithLocal injects on top of the
-// server response — historical localStorage data is uploaded separately.
-const sessionPending = new Map(); // date → entry
 
 // ── Date helpers ─────────────────────────────────────────────
 function todayDateKey() {
@@ -624,7 +620,6 @@ async function saveToday() {
   const note  = document.getElementById('noteInput').value.trim();
   const entry = { date: state.todayKey, status: state.selectedStatus, note, timestamp: new Date().toISOString() };
 
-  sessionPending.set(state.todayKey, entry);   // track until server confirms
   apiSaveDay(state.todayKey, state.selectedStatus, note);
 
   // Optimistic update — UI is always responsive
@@ -743,29 +738,23 @@ function esc(str) {
 }
 
 // ── Merge helper ─────────────────────────────────────────────
-// Server is the single source of truth.  The ONLY local data overlaid on
-// top of the server response is sessionPending — entries saved in this tab
-// during this session that haven't been confirmed by the server yet.
-// Historical localStorage data is uploaded to the server by
-// syncPendingToServer; once it's there, this function won't re-add it.
+// Server is the source of truth for any date it already has.
+// Local-only entries (saved but not yet confirmed on server, e.g. after a
+// failed upload or a page reload before apiSaveDay completed) are overlaid
+// so they are never silently dropped.  syncPendingToServer will upload them
+// on the next successful poll; once the server has them this function stops
+// re-adding them.
 function mergeWithLocal(serverData, localData) {
-  // Guard: bad server response → fall back to whatever we have locally
   if (!serverData || !Array.isArray(serverData.days)) {
     return localData || { days: [], photoUrl: '' };
   }
-  if (!sessionPending.size) return serverData;
+  if (!localData || !Array.isArray(localData.days)) return serverData;
 
-  const result    = { ...serverData, days: [...serverData.days] };
-  const serverMap = new Map(serverData.days.map(d => [d.date, d]));
+  const serverDates = new Set(serverData.days.map(d => d.date));
+  const localOnly   = localData.days.filter(d => d.status && !serverDates.has(d.date));
+  if (!localOnly.length) return serverData;
 
-  for (const [date, entry] of sessionPending) {
-    if (!serverMap.has(date)) {
-      result.days.push(entry);       // not yet on server — show optimistically
-    } else {
-      sessionPending.delete(date);   // server confirmed — no longer pending
-    }
-  }
-  return result;
+  return { ...serverData, days: [...serverData.days, ...localOnly] };
 }
 
 // ── API helper ───────────────────────────────────────────────
@@ -786,11 +775,6 @@ async function apiSaveDay(date, status, note) {
       return;
     }
     if (!Array.isArray(serverData.days)) return;
-    // Only clear from pending when the server response actually contains the
-    // entry — GAS sometimes returns the pre-write snapshot under load.
-    if (serverData.days.some(d => d.date === date)) {
-      sessionPending.delete(date);
-    }
     const merged = mergeWithLocal(serverData, state.data);
     state.data = merged;
     localStorage.setItem(LS_CACHE, JSON.stringify(merged));
@@ -852,7 +836,6 @@ function saveEditSheet() {
   const note  = document.getElementById('editNoteInput').value.trim();
   const entry = { date: editState.dateKey, status: editState.selectedStatus, note, timestamp: new Date().toISOString() };
 
-  sessionPending.set(editState.dateKey, entry);  // track until server confirms
   apiSaveDay(editState.dateKey, editState.selectedStatus, note);
 
   // Optimistic update
