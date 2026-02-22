@@ -786,8 +786,11 @@ async function apiSaveDay(date, status, note) {
       return;
     }
     if (!Array.isArray(serverData.days)) return;
-    // Server confirmed — clear from pending, then merge
-    sessionPending.delete(date);
+    // Only clear from pending when the server response actually contains the
+    // entry — GAS sometimes returns the pre-write snapshot under load.
+    if (serverData.days.some(d => d.date === date)) {
+      sessionPending.delete(date);
+    }
     const merged = mergeWithLocal(serverData, state.data);
     state.data = merged;
     localStorage.setItem(LS_CACHE, JSON.stringify(merged));
