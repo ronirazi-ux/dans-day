@@ -870,9 +870,9 @@ function saveEditSheet() {
 // ── Init ─────────────────────────────────────────────────────
 loadData();
 
-// Auto-refresh: reload from server every 30 s and when the tab becomes visible
+// Auto-refresh: reload from server every 10 s and when the tab becomes visible
 // so Browser B always picks up saves made on Browser A
-setInterval(loadData, 30_000);
+setInterval(loadData, 10_000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) loadData();
 });
