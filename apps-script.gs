@@ -82,7 +82,9 @@ function buildResponseData(ss) {
   const daysSheet   = getOrCreateSheet(ss, DAYS_SHEET);
   const configSheet = getOrCreateSheet(ss, CONFIG_SHEET);
 
-  const days    = [];
+  // Use a map so duplicates are collapsed — newest timestamp wins.
+  // (The sheet can accumulate duplicate rows; we always surface the latest entry per date.)
+  const byDate  = {};
   const rawRows = daysSheet.getDataRange().getValues();
   const tz      = Session.getScriptTimeZone();
   for (let i = 0; i < rawRows.length; i++) {
@@ -97,13 +99,17 @@ function buildResponseData(ss) {
     // Timestamps may also be parsed as Date objects
     const rawTs = row[3];
     const tsStr = (rawTs instanceof Date) ? rawTs.toISOString() : String(rawTs || '');
-    days.push({
-      date:      dateStr,
-      status:    String(row[1] || ''),
-      note:      String(row[2] || ''),
-      timestamp: tsStr,
-    });
+    // Keep the entry with the latest timestamp for each date
+    if (!byDate[dateStr] || tsStr > byDate[dateStr].timestamp) {
+      byDate[dateStr] = {
+        date:      dateStr,
+        status:    String(row[1] || ''),
+        note:      String(row[2] || ''),
+        timestamp: tsStr,
+      };
+    }
   }
+  const days = Object.values(byDate);
 
   const photoUrl = getConfig(configSheet, 'photo_url');
   return { days, photoUrl };
