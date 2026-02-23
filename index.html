@@ -624,6 +624,7 @@ async function saveToday() {
   const note  = document.getElementById('noteInput').value.trim();
   const entry = { date: state.todayKey, status: state.selectedStatus, note, timestamp: new Date().toISOString() };
 
+  confirmedUploads.delete(state.todayKey);   // allow retry if this save fails
   apiSaveDay(state.todayKey, state.selectedStatus, note);
 
   // Optimistic update — UI is always responsive
@@ -651,8 +652,19 @@ function setSyncStatus(state, msg) {
 // response as the final server view — no extra re-fetch, no loop.
 async function syncPendingToServer(serverData) {
   if (!state.data || !Array.isArray(state.data.days)) return null;
-  const serverDates = new Set((serverData.days || []).map(d => d.date));
-  const pending = state.data.days.filter(d => d.status && !serverDates.has(d.date) && !confirmedUploads.has(d.date));
+
+  // Build a map of server entries so we can compare timestamps
+  const serverMap = {};
+  for (const d of (serverData.days || [])) serverMap[d.date] = d;
+
+  // Upload entries that are either missing from the server OR have a newer
+  // local timestamp (= a save that was optimistically applied but never
+  // confirmed by the server, e.g. after a network failure).
+  const pending = state.data.days.filter(d => {
+    if (!d.status || confirmedUploads.has(d.date)) return false;
+    const server = serverMap[d.date];
+    return !server || (d.timestamp && d.timestamp > (server.timestamp || ''));
+  });
   if (!pending.length) return null;
 
   setSyncStatus(null, `🔄 מעלה ${pending.length} ימים...`);
@@ -755,23 +767,27 @@ function esc(str) {
 }
 
 // ── Merge helper ─────────────────────────────────────────────
-// Server is the source of truth for any date it already has.
-// Local-only entries (saved but not yet confirmed on server, e.g. after a
-// failed upload or a page reload before apiSaveDay completed) are overlaid
-// so they are never silently dropped.  syncPendingToServer will upload them
-// on the next successful poll; once the server has them this function stops
-// re-adding them.
+// For each date, the entry with the newest timestamp wins — regardless of
+// whether it comes from the server or from local storage.  This ensures:
+//   • A fresh optimistic save isn't clobbered by a stale server poll.
+//   • Once the server confirms a save (newer timestamp), it takes over.
 function mergeWithLocal(serverData, localData) {
   if (!serverData || !Array.isArray(serverData.days)) {
     return localData || { days: [], photoUrl: '' };
   }
   if (!localData || !Array.isArray(localData.days)) return serverData;
 
-  const serverDates = new Set(serverData.days.map(d => d.date));
-  const localOnly   = localData.days.filter(d => d.status && !serverDates.has(d.date));
-  if (!localOnly.length) return serverData;
+  const merged = {};
+  for (const d of serverData.days) merged[d.date] = d;
+  for (const d of localData.days) {
+    if (!d.status) continue;
+    const existing = merged[d.date];
+    if (!existing || (d.timestamp && d.timestamp > (existing.timestamp || ''))) {
+      merged[d.date] = d;
+    }
+  }
 
-  return { ...serverData, days: [...serverData.days, ...localOnly] };
+  return { ...serverData, days: Object.values(merged) };
 }
 
 // ── API helper ───────────────────────────────────────────────
@@ -853,6 +869,7 @@ function saveEditSheet() {
   const note  = document.getElementById('editNoteInput').value.trim();
   const entry = { date: editState.dateKey, status: editState.selectedStatus, note, timestamp: new Date().toISOString() };
 
+  confirmedUploads.delete(editState.dateKey);   // allow retry if this save fails
   apiSaveDay(editState.dateKey, editState.selectedStatus, note);
 
   // Optimistic update
