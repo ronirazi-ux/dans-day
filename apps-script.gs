@@ -51,12 +51,14 @@ function doGet(e) {
           : String(cellDate).trim();
         if (cellStr === date) {
           daysSheet.getRange(i + 1, 2, 1, 3).setValues([[status, note, timestamp]]);
+          SpreadsheetApp.flush();
           return jsonResponse(buildResponseData(ss));
         }
       }
 
       // Insert new row
       daysSheet.appendRow([date, status, note, timestamp]);
+      SpreadsheetApp.flush();
       return jsonResponse(buildResponseData(ss));
     }
 

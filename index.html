@@ -652,7 +652,7 @@ async function syncPendingToServer(serverData) {
   if (!pending.length) return null;
 
   setSyncStatus(null, `🔄 מעלה ${pending.length} ימים...`);
-  let latest = serverData;
+  let latest = null;
   for (const entry of pending) {
     const url = `${state.scriptUrl}?action=saveDay` +
       `&date=${encodeURIComponent(entry.date)}` +
@@ -662,11 +662,19 @@ async function syncPendingToServer(serverData) {
       const resp = await fetch(url);
       if (resp.ok) {
         const d = await resp.json();
-        if (d && !d.error && Array.isArray(d.days)) latest = d;
+        if (d && !d.error && Array.isArray(d.days)) {
+          latest = d;
+        } else {
+          console.warn('syncPending: server rejected', entry.date, entry.status, '→', d && d.error);
+        }
+      } else {
+        console.warn('syncPending: HTTP', resp.status, 'for', entry.date);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('syncPending: fetch error for', entry.date, err);
+    }
   }
-  return latest;  // post-upload server view, no re-fetch needed
+  return latest;  // null if nothing uploaded; post-upload server view otherwise
 }
 
 // ── Data loading ─────────────────────────────────────────────
