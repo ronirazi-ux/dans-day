@@ -668,7 +668,11 @@ async function syncPendingToServer(serverData) {
         const d = await resp.json();
         if (d && !d.error && Array.isArray(d.days)) {
           latest = d;
-          confirmedUploads.add(entry.date);
+          // Only mark confirmed when the server response actually contains the
+          // entry — without GAS flush() the response can be a stale snapshot
+          if (d.days.some(day => day.date === entry.date)) {
+            confirmedUploads.add(entry.date);
+          }
         } else {
           console.warn('syncPending: server rejected', entry.date, entry.status, '→', d && d.error);
         }
