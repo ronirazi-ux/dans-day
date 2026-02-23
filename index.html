@@ -437,6 +437,10 @@ const state = {
   todayKey:       todayDateKey(),
 };
 
+// Dates we've confirmed are on the server this session (saveDay returned them).
+// Prevents re-uploading the same entry every poll when getData lags behind a
+// recent write (GAS/Sheets can take a moment to reflect a write in a fresh read).
+const confirmedUploads = new Set();
 
 // ── Date helpers ─────────────────────────────────────────────
 function todayDateKey() {
@@ -648,7 +652,7 @@ function setSyncStatus(state, msg) {
 async function syncPendingToServer(serverData) {
   if (!state.data || !Array.isArray(state.data.days)) return null;
   const serverDates = new Set((serverData.days || []).map(d => d.date));
-  const pending = state.data.days.filter(d => d.status && !serverDates.has(d.date));
+  const pending = state.data.days.filter(d => d.status && !serverDates.has(d.date) && !confirmedUploads.has(d.date));
   if (!pending.length) return null;
 
   setSyncStatus(null, `🔄 מעלה ${pending.length} ימים...`);
@@ -664,6 +668,7 @@ async function syncPendingToServer(serverData) {
         const d = await resp.json();
         if (d && !d.error && Array.isArray(d.days)) {
           latest = d;
+          confirmedUploads.add(entry.date);
         } else {
           console.warn('syncPending: server rejected', entry.date, entry.status, '→', d && d.error);
         }
